@@ -1,5 +1,6 @@
 package com.SignUpform.form.controller;
 
+import java.util.List;
 import java.util.Map;
 import java.util.Random;
 import java.util.HashMap;
@@ -22,36 +23,62 @@ public class UserController {
     @Autowired
     private JavaMailSender mailSender;
 
-    // OTP store karne ke liye
-    Map<String,String> otpStorage = new HashMap<>();
+    // OTP store
+    Map<String, String> otpStorage = new HashMap<>();
 
 
-    // Test API
+    // ===================== USERS =====================
+
+    // See all users
+    @GetMapping("/users")
+    public List<User> getAllUsers() {
+        return userService.getAllUsers();
+    }
+
+    // See user by email
+    @GetMapping("/user/{email}")
+    public User getUserByEmail(@PathVariable String email) {
+        return userService.findByEmail(email);
+    }
+
+
+    // ===================== TEST =====================
+
     @GetMapping("/home")
-    public String home(){
+    public String home() {
         return "its working";
     }
 
 
-    // SIGNUP
+    // ===================== SIGNUP =====================
+
     @PostMapping("/signup")
-    public User register(@RequestBody User user){
+    public User register(@RequestBody User user) {
         return userService.register(user);
     }
 
 
-    // LOGIN
-    @PostMapping("/login")
-    public String login(@RequestBody User user){
+    // ===================== LOGIN =====================
 
-        User existingUser = userService.findByEmail(user.getEmail());
+    @PostMapping("/login")
+    public String login(@RequestBody Map<String,String> request){
+
+        String email = request.get("email");
+        String password = request.get("password");
+
+        User existingUser = userService.findByEmail(email);
 
         if(existingUser == null){
             return "User not found";
         }
 
+        // 🔴 Debug prints
+        System.out.println("RAW PASSWORD: " + password);
+        System.out.println("DB HASH: " + existingUser.getPassword());
+        System.out.println("MATCH RESULT: " + userService.checkPassword(password, existingUser.getPassword()));
+
         boolean match = userService.checkPassword(
-                user.getPassword(),
+                password,
                 existingUser.getPassword()
         );
 
@@ -61,21 +88,20 @@ public class UserController {
 
         return "Invalid Password";
     }
+    // ===================== FORGOT PASSWORD =====================
 
-
-    // FORGOT PASSWORD (OTP SEND)
     @PostMapping("/forgot-password")
-    public String forgotPassword(@RequestBody Map<String,String> request){
+    public String forgotPassword(@RequestBody Map<String, String> request) {
 
         String email = request.get("email");
 
         User user = userService.findByEmail(email);
 
-        if(user == null){
+        if (user == null) {
             return "Email not found";
         }
 
-        String otp = String.valueOf(new Random().nextInt(999999));
+        String otp = String.format("%06d", new Random().nextInt(999999));
 
         otpStorage.put(email, otp);
 
@@ -90,20 +116,22 @@ public class UserController {
     }
 
 
-    // VERIFY OTP
+    // ===================== VERIFY OTP =====================
+
     @PostMapping("/verify-otp")
-    public String verifyOtp(@RequestBody Map<String,String> request){
+    public String verifyOtp(@RequestBody Map<String, String> request) {
 
         String email = request.get("email");
         String otp = request.get("otp");
 
         String storedOtp = otpStorage.get(email);
 
-        if(storedOtp == null){
+        if (storedOtp == null) {
             return "OTP expired";
         }
 
-        if(storedOtp.equals(otp)){
+        if (storedOtp.equals(otp)) {
+            otpStorage.remove(email);   // OTP remove after verification
             return "OTP verified";
         }
 
@@ -111,22 +139,23 @@ public class UserController {
     }
 
 
-    // RESET PASSWORD
+    // ===================== RESET PASSWORD =====================
+
     @PostMapping("/reset-password")
-    public String resetPassword(@RequestBody Map<String,String> request){
+    public String resetPassword(@RequestBody Map<String, String> request) {
 
         String email = request.get("email");
-        String password = request.get("password");
+        String newPassword = request.get("password");
 
         User user = userService.findByEmail(email);
 
-        if(user == null){
+        if (user == null) {
             return "User not found";
         }
 
-        user.setPassword(userService.encodePassword(password));
+        user.setPassword(userService.encodePassword(newPassword));
 
-        userService.register(user);
+        userService.save(user);   // update password
 
         return "Password updated successfully";
     }
